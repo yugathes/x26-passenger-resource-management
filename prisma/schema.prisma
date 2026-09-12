@@ -1,0 +1,51 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Passenger {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  resources Resource[]
+  bookings  Booking[]
+}
+
+model Resource {
+  id          String   @id @default(uuid())
+  name        String
+  type        String
+  status      String   @default("available")
+  passengerId String?
+  passenger   Passenger? @relation(fields: [passengerId], references: [id], onDelete: SetNull)
+  bookings    Booking[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Booking {
+  id          String   @id @default(uuid())
+  passengerId String
+  passenger   Passenger @relation(fields: [passengerId], references: [id])
+  resourceId  String
+  resource    Resource @relation(fields: [resourceId], references: [id])
+  status      String   @default("confirmed")
+  startDate   DateTime
+  endDate     DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([passengerId])
+  @@index([resourceId])
+  @@index([status])
+}
