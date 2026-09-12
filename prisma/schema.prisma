@@ -10,25 +10,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum MembershipLevel {
+  BASIC
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
+model CrewLead {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  role      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  passengers Passenger[]
+}
+
 model Passenger {
   id        String   @id @default(uuid())
   name      String
   email     String   @unique
   phone     String?
+  membership MembershipLevel @default(BASIC)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  crewLeadId String?
+  crewLead   CrewLead? @relation(fields: [crewLeadId], references: [id])
   resources Resource[]
   bookings  Booking[]
+  usages    ResourceUsage[]
 }
 
 model Resource {
   id          String   @id @default(uuid())
   name        String
   type        String
-  status      String   @default("available")
+  status      ResourceStatus @default(AVAILABLE)
   passengerId String?
   passenger   Passenger? @relation(fields: [passengerId], references: [id], onDelete: SetNull)
   bookings    Booking[]
+  usages      ResourceUsage[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -48,4 +77,25 @@ model Booking {
   @@index([passengerId])
   @@index([resourceId])
   @@index([status])
+}
+
+model ResourceUsage {
+  id          String   @id @default(uuid())
+  resourceId  String
+  resource    Resource @relation(fields: [resourceId], references: [id])
+  passengerId String
+  passenger   Passenger @relation(fields: [passengerId], references: [id])
+  usageStart  DateTime @default(now())
+  usageEnd    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String
+  userId    String?
+  timestamp DateTime @default(now())
 }
