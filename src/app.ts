@@ -1,3 +1,4 @@
+import path from 'path';
 import express, { Application, NextFunction, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
@@ -14,6 +15,7 @@ export const createApp = (): Application => {
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(express.static(path.join(__dirname, '..', 'public')));
 
   app.get('/health', async (_req: Request, res: Response) => {
     try {

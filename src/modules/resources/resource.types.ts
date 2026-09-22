@@ -16,7 +16,7 @@ export const updateResourceSchema = z.object({
 }).strict().refine((input) => Object.keys(input).length > 0, 'At least one resource field is required');
 
 export const setResourceStatusSchema = z.object({
-  status: z.enum(['INACTIVE', 'DECOMMISSIONED'])
+  status: z.enum(['INACTIVE', 'DECOMMISSIONED', 'ACTIVE'])
 }).strict();
 
 export type CreateResourceInput = z.infer<typeof createResourceSchema>;
