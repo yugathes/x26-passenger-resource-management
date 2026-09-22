@@ -1,12 +1,13 @@
 import request from 'supertest';
-import app from '../src/index';
+import { createApp } from '../src/app';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 describe('Health Check Endpoint', () => {
+  const app = createApp();
+
   beforeAll(async () => {
-    // Ensure database is connected
     await prisma.$connect();
   });
 
