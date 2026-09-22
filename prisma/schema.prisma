@@ -10,34 +10,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Ordered lowest to highest; index order encodes the access hierarchy (Silver < Gold < Platinum)
 enum MembershipLevel {
-  BRONZE
   SILVER
   GOLD
   PLATINUM
 }
 
 enum ResourceStatus {
-  AVAILABLE
-  IN_USE
-  MAINTENANCE
-  RETIRED
+  ACTIVE
+  INACTIVE
+  DECOMMISSIONED
 }
 
-enum AccessDecision {
+enum ResourceAccessResult {
   ALLOWED
   DENIED
 }
 
 model CrewLead {
-  id         String      @id @default(uuid())
-  name       String
-  email      String      @unique
-  role       String
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  passengers Passenger[]
-  auditLogs  AuditLog[]
+  id        String     @id @default(uuid())
+  name      String
+  email     String     @unique
+  role      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  auditLogs AuditLog[]
 }
 
 model Passenger {
@@ -45,39 +43,23 @@ model Passenger {
   name       String
   email      String          @unique
   phone      String?
-  membership MembershipLevel @default(BRONZE)
+  membership MembershipLevel @default(SILVER)
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
-  crewLeadId String?
-  crewLead   CrewLead?       @relation(fields: [crewLeadId], references: [id])
-  resources  Resource[]
   usages     ResourceUsage[]
+  auditLogs  AuditLog[]
 }
 
 model Resource {
-  id          String           @id @default(uuid())
-  name        String
-  type        String
-  status      ResourceStatus   @default(AVAILABLE)
-  passengerId String?
-  passenger   Passenger?       @relation(fields: [passengerId], references: [id], onDelete: SetNull)
-  usages      ResourceUsage[]
-  accessRules ResourceAccess[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-}
-
-model ResourceAccess {
-  id              String          @id @default(uuid())
-  resourceId      String
-  resource        Resource        @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-  membershipLevel MembershipLevel
-  decision        AccessDecision  @default(ALLOWED)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  @@unique([resourceId, membershipLevel])
-  @@index([membershipLevel])
+  id            String          @id @default(uuid())
+  name          String
+  type          String
+  status        ResourceStatus  @default(ACTIVE)
+  minMembership MembershipLevel @default(SILVER)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  usages        ResourceUsage[]
+  auditLogs     AuditLog[]
 }
 
 model ResourceUsage {
@@ -86,22 +68,28 @@ model ResourceUsage {
   resource    Resource  @relation(fields: [resourceId], references: [id])
   passengerId String
   passenger   Passenger @relation(fields: [passengerId], references: [id])
-  usageStart  DateTime  @default(now())
-  usageEnd    DateTime?
+  accessedAt  DateTime  @default(now())
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+
+  @@index([resourceId])
+  @@index([passengerId])
 }
 
 model AuditLog {
-  id         String    @id @default(uuid())
-  action     String
-  entity     String
-  entityId   String
-  crewLeadId String?
-  crewLead   CrewLead? @relation(fields: [crewLeadId], references: [id], onDelete: SetNull)
-  metadata   Json?
-  createdAt  DateTime  @default(now())
+  id          String               @id @default(uuid())
+  action      String
+  result      ResourceAccessResult
+  reason      String?
+  passengerId String?
+  passenger   Passenger?           @relation(fields: [passengerId], references: [id], onDelete: SetNull)
+  resourceId  String?
+  resource    Resource?            @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  crewLeadId  String?
+  crewLead    CrewLead?            @relation(fields: [crewLeadId], references: [id], onDelete: SetNull)
+  metadata    Json?
+  createdAt   DateTime             @default(now())
 
-  @@index([entity, entityId])
+  @@index([passengerId])
+  @@index([resourceId])
   @@index([crewLeadId])
 }
