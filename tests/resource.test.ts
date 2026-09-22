@@ -52,4 +52,19 @@ describe('Resource CRUD', () => {
     const res = await request(app).post('/resources').send({ name: 'No Auth Lounge', type: 'LOUNGE' });
     expect(res.status).toBe(401);
   });
+
+  it('rejects resource creation with an unknown or malformed crew lead', async () => {
+    const payload = { name: 'Unauthorized Lounge', type: 'LOUNGE' };
+    const unknown = await request(app)
+      .post('/resources')
+      .set('x-crew-lead-id', '00000000-0000-0000-0000-000000000000')
+      .send(payload);
+    const malformed = await request(app)
+      .post('/resources')
+      .set('x-crew-lead-id', 'not-a-uuid')
+      .send(payload);
+
+    expect(unknown.status).toBe(401);
+    expect(malformed.status).toBe(401);
+  });
 });

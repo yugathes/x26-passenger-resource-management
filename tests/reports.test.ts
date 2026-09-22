@@ -33,6 +33,13 @@ describe('Reporting and analytics', () => {
     expect(res.status).toBe(401);
   });
 
+  it('rejects report access with an invalid crew lead', async () => {
+    const res = await request(app)
+      .get('/reports/resources/usage')
+      .set('x-crew-lead-id', 'not-a-uuid');
+    expect(res.status).toBe(401);
+  });
+
   it('returns a passenger usage history', async () => {
     const passenger = await createPassenger('GOLD');
     const resource = await createResource('SILVER');
