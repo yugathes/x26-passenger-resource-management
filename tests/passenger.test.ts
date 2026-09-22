@@ -57,4 +57,36 @@ describe('Passenger CRUD', () => {
       .send({ name: 'Bad Auth', email: `bad-auth-${Date.now()}@test.com` });
     expect(res.status).toBe(401);
   });
+
+  it('rejects duplicate passenger emails with a 409', async () => {
+    const email = `dup-passenger-${Date.now()}@test.com`;
+    const first = await request(app)
+      .post('/passengers')
+      .set('x-crew-lead-id', crewLeadId)
+      .send({ name: 'First', email });
+    expect(first.status).toBe(201);
+
+    const second = await request(app)
+      .post('/passengers')
+      .set('x-crew-lead-id', crewLeadId)
+      .send({ name: 'Second', email });
+    expect(second.status).toBe(409);
+    expect(second.body.error.message).toMatch(/already exists/i);
+  });
+
+  it('rejects payloads with unknown fields', async () => {
+    const res = await request(app)
+      .post('/passengers')
+      .set('x-crew-lead-id', crewLeadId)
+      .send({ name: 'Extra Field', email: `extra-${Date.now()}@test.com`, unknownField: 'nope' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects invalid membership values', async () => {
+    const res = await request(app)
+      .post('/passengers')
+      .set('x-crew-lead-id', crewLeadId)
+      .send({ name: 'Bad Membership', email: `bad-membership-${Date.now()}@test.com`, membership: 'BRONZE' });
+    expect(res.status).toBe(400);
+  });
 });

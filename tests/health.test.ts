@@ -49,4 +49,23 @@ describe('Health Check Endpoint', () => {
       expect(response.body).toHaveProperty('environment');
     });
   });
+
+  describe('Malformed request handling', () => {
+    it('returns 400 for malformed JSON bodies', async () => {
+      const response = await request(app)
+        .post('/crew-leads')
+        .set('Content-Type', 'application/json')
+        .send('{"name": "Broken"');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toMatch(/malformed json/i);
+    });
+
+    it('returns a consistent 404 envelope for unknown routes', async () => {
+      const response = await request(app).get('/unknown-route');
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.message).toBe('Not Found');
+    });
+  });
 });

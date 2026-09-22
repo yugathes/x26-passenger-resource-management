@@ -60,4 +60,26 @@ describe('Crew lead management', () => {
     const res = await request(app).get('/crew-leads/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);
   });
+
+  it('rejects duplicate crew lead emails with a 409', async () => {
+    const count = await prisma.crewLead.count();
+    if (count >= MAX_CREW_LEADS) {
+      return;
+    }
+
+    const email = `dup-crew-lead-${Date.now()}@test.com`;
+    const first = await request(app).post('/crew-leads').send({ name: 'First', email, role: 'OPERATIONS' });
+    expect(first.status).toBe(201);
+
+    const second = await request(app).post('/crew-leads').send({ name: 'Second', email, role: 'OPERATIONS' });
+    expect(second.status).toBe(409);
+    expect(second.body.error.message).toMatch(/already exists/i);
+  });
+
+  it('rejects payloads with unknown fields', async () => {
+    const res = await request(app)
+      .post('/crew-leads')
+      .send({ name: 'Extra Field', email: `extra-crew-${Date.now()}@test.com`, role: 'OPERATIONS', unknownField: 'nope' });
+    expect(res.status).toBe(400);
+  });
 });

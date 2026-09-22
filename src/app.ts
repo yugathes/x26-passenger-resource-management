@@ -1,4 +1,5 @@
 import express, { Application, NextFunction, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 import { prisma } from './db/prisma';
 import { HttpError } from './lib/http-error';
@@ -40,7 +41,7 @@ export const createApp = (): Application => {
   app.use('/reports', reportsRouter);
 
   app.use((_req: Request, res: Response) => {
-    res.status(404).json({ error: 'Not Found' });
+    res.status(404).json({ error: { message: 'Not Found' } });
   });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -49,9 +50,24 @@ export const createApp = (): Application => {
       res.status(400).json({ error: { message: 'Validation failed', details: err.issues } });
       return;
     }
+    if (err instanceof SyntaxError && 'body' in err) {
+      res.status(400).json({ error: { message: 'Malformed JSON in request body' } });
+      return;
+    }
     if (err instanceof HttpError) {
       res.status(err.statusCode).json({ error: { message: err.message } });
       return;
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === 'P2002') {
+        const target = Array.isArray(err.meta?.target) ? err.meta.target.join(', ') : 'field';
+        res.status(409).json({ error: { message: `A record with this ${target} already exists` } });
+        return;
+      }
+      if (err.code === 'P2025') {
+        res.status(404).json({ error: { message: 'Record not found' } });
+        return;
+      }
     }
     console.error(err);
     res.status(500).json({ error: { message: 'Internal Server Error' } });

@@ -189,6 +189,8 @@ All errors use a consistent envelope:
 
 Validation errors additionally include a `details` array with Zod issue paths and messages.
 
+Every error path — validation failures, malformed JSON bodies, missing/invalid/unknown crew-lead identity, not-found lookups, and duplicate-value conflicts (e.g. an email already in use) — is normalized to one of `400`/`401`/`403`/`404`/`409` by the shared error middleware in [src/app.ts](src/app.ts), including translating raw Prisma constraint errors (`P2002` unique violations, `P2025` missing records) instead of leaking a `500`.
+
 ## Environment Variables
 
 | Variable | Purpose | Default |
