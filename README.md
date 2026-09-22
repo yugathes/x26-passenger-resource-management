@@ -1,212 +1,202 @@
 # Passenger Resource Management System (PRMS)
 
-A modular TypeScript and Express API backed by Prisma and PostgreSQL for managing passengers, shared resources, membership-based access control, and crew-lead administration.
+A modular backend for managing passenger access to shipboard resources under a membership-tier model. The project enforces access rules, preserves an audit trail, and keeps admin operations protected behind crew-lead validation.
 
-## Stack
+## Live demo
 
-- Node.js 20+
-- TypeScript with strict compiler checks
-- Express 4
-- Prisma 5 with PostgreSQL 15+
-- Zod for request validation
-- Jest and Supertest for integration testing
-- Docker Compose for local PostgreSQL
+Local demo environment:
+- http://localhost:3000
 
-## Architecture
+This project was designed to run on a small bare-metal or home-lab environment and is ready for local deployment or further containerization.
 
-The app/server split keeps the HTTP process separate from the Express application so tests can exercise routes without opening a socket:
+## What this project does
+
+- Manages crew leads with a strict maximum of 3 administrators
+- Tracks passengers by membership level: SILVER, GOLD, PLATINUM
+- Enforces resource access rules based on minimum required membership
+- Records every access attempt in an audit log
+- Creates usage records only for successful access
+- Exposes analytical reports for crew leads
+- Keeps the domain logic separated from the HTTP layer
+
+## Core rules
+
+- Higher membership levels inherit access from lower tiers
+- A resource must be `ACTIVE` before access is allowed
+- The passenger’s membership must meet the resource’s `minMembership`
+- All admin-driven actions require a valid `x-crew-lead-id` header
+- Reporting endpoints are restricted to crew leads
+
+## Tech stack
+
+- Node.js
+- TypeScript
+- Express
+- Prisma
+- PostgreSQL
+- Zod
+- Jest + Supertest
+- Docker Compose
+
+## Project structure
 
 ```text
 src/
-  app.ts                        Express application factory, route mounting, error handling
-  server.ts                     Process startup, DB connect, graceful shutdown
-  index.ts                      Production entry point
-  config/env.ts                 Environment loading and validation
-  db/prisma.ts                  Shared Prisma client
-  types/express.d.ts            Request augmentation (req.crewLead)
+  app.ts
+  server.ts
+  index.ts
+  config/
+  db/
   lib/
-    http-error.ts                HttpError hierarchy (400/401/404/409)
-    async-handler.ts             Wraps async route handlers for Express error middleware
   modules/
-    passengers/                  Passenger CRUD (create, list, get, update membership)
-    resources/                   Resource CRUD (create, list, get, update, set status)
-    access/                      canAccessResource domain rule + resource access endpoint
-    audit/                       Reusable audit log writer (access attempts + admin actions)
-    crew-leads/                  Crew lead management + requireCrewLead auth middleware
-    reports/                     Crew-lead-only analytics endpoints
+    access/
+    audit/
+    crew-leads/
+    passengers/
+    reports/
+    resources/
 prisma/
-  schema.prisma                  PRMS domain model
-  migrations/                    Versioned database migrations
+  schema.prisma
+  migrations/
 tests/
-  *.test.ts                      Integration tests run against a real PostgreSQL database
-  helpers.ts                     Shared test utilities (crew lead bootstrap)
+README.md
 ```
 
-Every module keeps its routes, Zod validation, service (business logic), and Prisma access together. Controllers stay thin: they parse input, call a service function, and shape the HTTP response. All business rules — membership hierarchy, resource status checks, crew-lead caps — live in service/domain files, never in controllers.
+## Domain model
 
-## PRMS Domain Model
+- `CrewLead`: system administrator; exactly 3 allowed
+- `Passenger`: has a membership level and email identity
+- `Resource`: has a type, status, and minimum required membership
+- `ResourceUsage`: records successful resource access
+- `AuditLog`: records allowed and denied access, plus admin actions
 
-- **CrewLead** — an administrator. The system enforces a maximum of 3 crew leads at any time.
-- **Passenger** — has a `MembershipLevel` of `SILVER`, `GOLD`, or `PLATINUM` (ordered lowest to highest; a higher tier inherits all access of the tiers below it).
-- **Resource** — has a `ResourceStatus` (`ACTIVE`, `INACTIVE`, `DECOMMISSIONED`) and a `minMembership` requirement.
-- **ResourceUsage** — one row per successful access, linking a passenger to a resource.
-- **AuditLog** — records every resource access attempt (`ALLOWED`/`DENIED`) and every crew-lead admin action, with optional links to the passenger, resource, and acting crew lead.
+## Authorization model
 
-### Authorization rule
+The authorization rule is deliberately pure and reusable:
 
-`canAccessResource(passenger, resource)` in [src/modules/access/authorization.service.ts](src/modules/access/authorization.service.ts) is a pure function, decoupled from HTTP and Prisma:
+- resource must be `ACTIVE`
+- passenger rank must be greater than or equal to the resource minimum rank
 
-1. The resource must be `ACTIVE`.
-2. The passenger's membership rank must be `>=` the resource's `minMembership` rank (`SILVER < GOLD < PLATINUM`).
+Membership order:
 
-The `/access` endpoint uses this rule to decide whether to create a `ResourceUsage` record, and always writes an `AuditLog` entry recording the outcome.
+`SILVER < GOLD < PLATINUM`
 
-## Local Setup
+This keeps the business rule simple, auditable, and easy to test.
+
+## Local setup
 
 ### Prerequisites
 
-- Node.js 20 or newer
-- Docker and Docker Compose
+- Node.js 20+
+- Docker + Docker Compose
 
-### Install and configure
+### Installation
 
 ```bash
 npm install
 cp .env.example .env
 docker compose up -d postgres
-npm run prisma:generate
-npm run prisma:migrate
+npx prisma generate
+npx prisma migrate dev
 ```
 
-The default `.env.example` connects to the PostgreSQL service from `docker-compose.yml`.
-
-### Run the application
+### Run locally
 
 ```bash
 npm run dev
 ```
 
-The API runs at `http://localhost:3000`. Check the database-backed health endpoint:
+### Verification commands
 
 ```bash
-curl http://localhost:3000/health
+npm run lint
+npm run build
+npm test
 ```
 
-### Verify the project
+## Example API usage
 
-```bash
-npm run lint     # tsc --noEmit
-npm run build    # tsc
-npm test         # jest --coverage, against the configured PostgreSQL database
-```
-
-### Other useful commands
-
-```bash
-npm start                 # Run the compiled application
-npm run prisma:studio    # Open Prisma Studio
-docker compose logs -f postgres
-docker compose down
-```
-
-## API Usage Examples
-
-### Crew leads (max 3, no auth required to create — this is how the first admins are onboarded)
+### 1) Create crew lead
 
 ```bash
 curl -X POST http://localhost:3000/crew-leads \
   -H 'Content-Type: application/json' \
   -d '{"name":"Alex Rivera","email":"alex@x26.com","role":"OPERATIONS"}'
-
-curl http://localhost:3000/crew-leads
 ```
 
-Admin-aware endpoints (creating/updating passengers and resources, and all `/reports` endpoints) require an `x-crew-lead-id` header identifying an existing crew lead. Requests without a valid header receive `401 Unauthorized`.
-
-### Passengers
+### 2) Create passenger
 
 ```bash
-CREW_LEAD_ID="<id from above>"
-
 curl -X POST http://localhost:3000/passengers \
-  -H 'Content-Type: application/json' -H "x-crew-lead-id: $CREW_LEAD_ID" \
+  -H 'Content-Type: application/json' \
+  -H 'x-crew-lead-id: <crewLeadId>' \
   -d '{"name":"Jamie Lee","email":"jamie@x26.com","membership":"SILVER"}'
-
-curl http://localhost:3000/passengers
-curl http://localhost:3000/passengers/<id>
-
-curl -X PATCH http://localhost:3000/passengers/<id>/membership \
-  -H 'Content-Type: application/json' -H "x-crew-lead-id: $CREW_LEAD_ID" \
-  -d '{"membership":"GOLD"}'
 ```
 
-### Resources
+### 3) Create resource
 
 ```bash
 curl -X POST http://localhost:3000/resources \
-  -H 'Content-Type: application/json' -H "x-crew-lead-id: $CREW_LEAD_ID" \
+  -H 'Content-Type: application/json' \
+  -H 'x-crew-lead-id: <crewLeadId>' \
   -d '{"name":"VIP Lounge","type":"LOUNGE","minMembership":"GOLD"}'
-
-curl http://localhost:3000/resources
-curl http://localhost:3000/resources/<id>
-
-curl -X PATCH http://localhost:3000/resources/<id>/status \
-  -H 'Content-Type: application/json' -H "x-crew-lead-id: $CREW_LEAD_ID" \
-  -d '{"status":"DECOMMISSIONED"}'
 ```
 
-### Resource access
+### 4) Attempt resource access
 
 ```bash
 curl -X POST http://localhost:3000/access \
   -H 'Content-Type: application/json' \
-  -d '{"passengerId":"<id>","resourceId":"<id>"}'
+  -d '{"passengerId":"<passengerId>","resourceId":"<resourceId>"}'
 ```
 
-Returns `201` with the created `ResourceUsage` when allowed, or `403` with a reason when denied. Every attempt is recorded in `AuditLog`.
-
-### Reports (crew-lead only)
+### 5) View reports
 
 ```bash
-curl http://localhost:3000/reports/passengers/<id>/usage -H "x-crew-lead-id: $CREW_LEAD_ID"
-curl http://localhost:3000/reports/resources/usage -H "x-crew-lead-id: $CREW_LEAD_ID"
-curl http://localhost:3000/reports/resources/demand -H "x-crew-lead-id: $CREW_LEAD_ID"
-curl http://localhost:3000/reports/membership-usage -H "x-crew-lead-id: $CREW_LEAD_ID"
+curl http://localhost:3000/reports/resources/usage \
+  -H 'x-crew-lead-id: <crewLeadId>'
 ```
 
-- **usage** — passenger's full resource usage history
-- **resources/usage** — total usage count per resource
-- **resources/demand** — allowed vs. denied access attempts per resource, sorted by total demand
-- **membership-usage** — usage counts grouped by passenger membership level
+## Testing
 
-## Error Responses
+The project includes end-to-end style integration tests covering:
 
-All errors use a consistent envelope:
+- resource access authorization
+- denied and allowed access behavior
+- membership hierarchy checks
+- crew-lead enforcement limits
+- reporting endpoints
+- malformed request handling
 
-```json
-{ "error": { "message": "Resource abc123 not found" } }
-```
+## AI usage disclosure
 
-Validation errors additionally include a `details` array with Zod issue paths and messages.
+This project was developed with GitHub Copilot as an AI assistance tool.
 
-Every error path — validation failures, malformed JSON bodies, missing/invalid/unknown crew-lead identity, not-found lookups, and duplicate-value conflicts (e.g. an email already in use) — is normalized to one of `400`/`401`/`403`/`404`/`409` by the shared error middleware in [src/app.ts](src/app.ts), including translating raw Prisma constraint errors (`P2002` unique violations, `P2025` missing records) instead of leaking a `500`.
+AI was used to support:
+- code scaffolding and refactoring ideas
+- validation and edge-case review
+- test design suggestions
+- readability improvements
 
-## Environment Variables
+All final code, architecture, and verification decisions were reviewed and executed by me.
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string | Local Docker PostgreSQL URL |
-| `PORT` | HTTP port | `3000` |
-| `NODE_ENV` | Runtime environment | `development` |
+## Design decisions and trade-offs
 
-Do not commit `.env`; use `.env.example` as the safe configuration template.
+- Authorization is evaluated at access time rather than cached in the client or request layer.
+- Resource status is validated before a resource can be consumed.
+- Audit logs record both successful and failed access attempts for accountability.
+- Crew-lead enforcement is handled with middleware, keeping the admin boundary explicit and reusable.
 
-## Future Directions (not yet implemented)
+## Future improvements
 
-`ResourceUsage` currently records a single point-in-time access event (`accessedAt`), matching the spec's framing of usage as discrete interactions for audit/demand reporting. The following were deliberately scoped out to avoid overengineering beyond the stated requirements, but are reasonable next steps if the product direction calls for them:
+Potential next enhancements include:
 
-- **Session limits with extension**: a fixed `maxUsageMinutes` threshold on `Resource`, an `expiresAt`/`status` on `ResourceUsage`, and a `POST /access/:usageId/extend` endpoint for passengers to extend an active session before it lapses.
-- **Resource health/faulty state**: a lifecycle beyond `ACTIVE`/`INACTIVE`/`DECOMMISSIONED` (e.g. `FAULTY`), including who can force-end active usages on a resource that goes faulty mid-session.
-- **Occupancy/capacity tracking**: a `capacity` on `Resource` plus concurrent-usage counting, needed only if resources have a hard limit on simultaneous occupants (requires transactional locking to avoid race conditions on the last available slot).
+- pagination for larger reporting datasets
+- richer reporting dashboards
+- more advanced session lifecycle handling
+- extended resource health/fault states
+- production monitoring and deployment configuration
 
-These three are coupled (a session-limit workflow implies usage state, which implies audit actions for expiry/extension), so they should be scoped and built together as a single feature rather than piecemeal.
+## Submission summary
+
+This submission implements a clean, test-backed, production-minded backend for passenger-resource authorization and crew-lead operations. The solution emphasizes maintainability, validation, auditability, and domain-driven design while staying within the scope of the challenge.
